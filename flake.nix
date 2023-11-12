@@ -19,14 +19,6 @@
 
           nativeBuildInputs = [ pkgs.yasm ];
 
-          # buildPhase = ''
-          #   yasm main.asm -f bin -o bootloader.bin
-          #   yasm kernel.asm -f elf32 -o kernel_entry.o
-          #   gcc -m32 -ffreestanding -fno-pie -mno-red-zone -fno-exceptions -nostdlib -Werror -c kernel.c -o kernel.o
-          #   ld -m elf_i386 -o kernel.bin -Ttext 0x1000 kernel_entry.o kernel.o --oformat binary
-          #   cat bootloader.bin kernel.bin > boot.img
-          # '';
-
           buildPhase = ''
             yasm bootloader/main.asm -f elf32 -o boot.o
             gcc -m32 kernel/*.c boot.o -o boot.img -nostdlib -fno-pie -ffreestanding -std=c11 -mno-red-zone -fno-exceptions -nostdlib -Wextra -Werror -T linker.ld
