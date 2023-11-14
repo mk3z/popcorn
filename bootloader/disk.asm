@@ -1,6 +1,5 @@
 disk_load:
-    pusha                       ; Save registers to stack.
-    mov dh, 3                   ; Set sector count to 2.
+    mov dh, 3                   ; Set sector count.
     push dx                     ; Save dx as last because it will be used later
                                 ; to check if all sectors were read.
 
@@ -21,7 +20,6 @@ disk_load:
     cmp al, dh                  ; Check if all sectors were read.
     jne sector_error
 
-    popa                        ; Restore registers.
     ret
 
 disk_error:
