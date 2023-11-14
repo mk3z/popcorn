@@ -28,7 +28,7 @@ start:
 
     mov bx, kernel_offset       ; Tell int 13h where to load the kernel to.
 
-    mov dh, 4                   ; Set sector count.
+    mov dh, 3                   ; Set sector count.
     mov al, dh
     push dx                     ; Save dx to stack because it will be used later
                                 ; to check if all sectors were read.
