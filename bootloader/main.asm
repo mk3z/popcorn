@@ -147,6 +147,8 @@ init_32bit:
 
     mov esp, kernel_stack_top   ; Set stack pointer to top of kernel stack.
 
+    call clear_screen
+
     mov esi, kernel_exec_msg
     call vga_print
 
