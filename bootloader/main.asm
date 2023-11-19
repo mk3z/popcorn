@@ -8,6 +8,10 @@ start:
     mov bp, 0x7c00
     mov sp, bp
 
+    ; Initialize data segment
+    mov ax, 0x0
+    mov ds, ax
+
     ; Set video mode to 80x25 colored text mode
     mov al, 0x02
     int 0x10
