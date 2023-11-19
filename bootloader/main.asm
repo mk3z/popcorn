@@ -3,14 +3,25 @@ section .boot
 
 global start
 start:
+    ; Some BIOSes start at 0x07c0:0x0000, others at 0x0000:0x7c00. Far jump to
+    ; 0x0000:.main to ensure that the bootloader works on all BIOSes.
+    jmp 0x0000:.main
+
+.main:
+    xor ax, ax                  ; Set ax to 0.
+
+    ; Set segment registers to 0x0000.
+    mov ss, ax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
     ; Set stack to start of bootloader. The stack grows downwards, so the stack
     ; won't overwrite the bootloader.
-    mov bp, 0x7c00
-    mov sp, bp
+    mov sp, start
 
-    ; Initialize data segment
-    mov ax, 0x0
-    mov ds, ax
+    cld                         ; Clear direction flag.
 
     ; Set video mode to 80x25 colored text mode
     mov al, 0x02
