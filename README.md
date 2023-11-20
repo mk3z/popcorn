@@ -1,6 +1,6 @@
 # Popcorn
 
-This is a small 32-bit kernel written in C and an equally small bootloader written in x86 NASM.
+This is a small bootloader written in x86 NASM and an equally small kernel written in C.
 
 ## Producing a binary
 
@@ -10,12 +10,15 @@ This is a small 32-bit kernel written in C and an equally small bootloader writt
 
 ### Generic Linux
 
-1. `yasm bootloader/main.asm -f elf32 -o boot.o`
+1. `yasm bootloader/main.asm -f elf64 -o boot.o`
 
 NASM should also work.
 
-2. `gcc -m32 kernel/*.c boot.o -o boot.img -nostdlib -fno-pie -ffreestanding -std=c11 -mno-red-zone -fno-exceptions -nostdlib -Wextra -Werror -T linker.ld`
-
+``` sh
+gcc -m64 kernel/*.c boot.o -o boot.img -nostdlib -fno-pie \
+-ffreestanding -std=c11 -mno-red-zone -fno-exceptions \
+-nostdlib -Wextra -Werror -T linker.ld
+```
 
 ## Running in QEMU
 

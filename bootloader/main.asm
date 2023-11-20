@@ -3,45 +3,75 @@ section .boot
 
 global start
 start:
-    ; Some BIOSes start at 0x07c0:0x0000, others at 0x0000:0x7c00. Far jump to
-    ; 0x0000:.main to ensure that the bootloader works on all BIOSes.
-    jmp 0x0000:.main
+    jmp 0x0000:.main            ; Some BIOSes start at 0x07c0:0x0000, others at
+                                ; 0x0000:0x7c00. Far jump to 0x0000:.main to
+                                ; ensure that the bootloader works on all
+                                ; BIOSes.
 
 .main:
-    xor ax, ax                  ; Set ax to 0.
+    xor ax, ax                  ; Clear ax.
 
-    ; Set segment registers to 0x0000.
-    mov ss, ax
+    mov ss, ax                  ; Set up segment registers.
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
 
-    ; Set stack to start of bootloader. The stack grows downwards, so the stack
-    ; won't overwrite the bootloader.
-    mov sp, start
+    mov sp, start               ; Set stack to start of bootloader. The stack
+                                ; grows downwards, so the stack won't overwrite
+                                ; the bootloader.
 
     cld                         ; Clear direction flag.
 
-    ; Set video mode to 80x25 colored text mode
-    mov al, 0x02
+    mov [BOOT_DRIVE], dl        ; Save boot drive number to BOOT_DRIVE.
+
+    mov al, 0x02                ; Set video mode to 80x25 colored text mode
     int 0x10
 
-    ; Print welcome message
-    mov si, welcome_msg
+                                ; Check whether CPU supports CPUID.
+
+    pushfd                      ; Push flags register to stack.
+    pop eax                     ; Pop flags register to eax.
+
+    mov ecx, eax                ; Backup flags register to ecx.
+
+    xor eax, 1 << 21            ; Flip bit 21 of flags register.
+
+    push eax                    ; Push new flags register to stack.
+    popfd                       ; Store new flags register.
+
+    pushfd                      ; Push flags register to stack.
+    pop eax                     ; Pop flags register to eax.
+
+    push ecx                    ; Push old flags register to stack.
+    popfd                       ; Store old flags register.
+
+    xor eax, ecx                ; If the flags register was changed, the CPU
+                                ; supports CPUID.
+    jz cpuid_error
+
+    mov eax, 0x80000000         ; Check whether long mode is available.
+    cpuid
+    cmp eax, 0x80000001
+    jb cpu_error
+
+    mov eax, 0x80000001         ; Check whether long mode is suppprted.
+    cpuid
+    test edx, 1 << 29
+    jz cpu_error
+
+    mov si, kernel_loading_msg  ; Print kernel loading message
     call bios_print
 
-    ; Print kernel loading message
-    mov si, kernel_loading_msg
-    call bios_print
-
-    ; Load kernel from disk
+                                ; Load kernel from disk
 
     cli                         ; Disable interrupts until kernel is loaded.
 
+    mov dl, [BOOT_DRIVE]        ; Set dl to boot drive number.
+
     mov ah, 0x02                ; Read mode
 
-    mov bx, kernel_offset       ; Tell int 13h where to load the kernel to.
+    mov bx, KERNEL_OFFSET       ; Tell int 13h where to load the kernel to.
 
     mov dh, 3                   ; Set sector count.
     mov al, dh
@@ -66,66 +96,61 @@ start:
 
     sti                         ; Enable interrupts again.
 
-    ; Kernel has now been read from disk to address kernel_offset.
+                                ; Kernel has now been read from disk to address
+                                ; KERNEL_OFFSET.
 
-    ; Prepare for 32 bit mode.
-    jmp prepare_for_32bit
+    jmp prepare_long_mode
+                                
+cpuid_error
+    mov si, cpuid_error_msg
+    call bios_print
+    jmp haltloop
+
+cpu_error
+    mov si, cpu_error_msg
+    call bios_print
+    jmp haltloop
 
 disk_error:
     mov si, disk_error_msg
     call bios_print
-    hlt
+    jmp haltloop
 
 sector_error:
     mov si, sector_error_msg
     call bios_print
-    hlt
+    jmp haltloop
 
-prepare_for_32bit:
-    mov si, switch_msg
-    call bios_print
-
-    ; Due to some short-sighted programmers, the A20 line is disabled by default
-    ; on boot. This means that the program can't access memory above 1MB. It
-    ; needs to be enabled before switching to protected mode.
-    mov ax, 0x2401              ; BIOS function to enable A20 line.
-    int 0x15                    ; enable A20 bit.
-
-    cli                         ; Disable interrupts until kernel creates IDT.
-
-    lgdt [gdt_descriptor]       ; Load GDT.
-
-    ; Enable protected mode by setting 0th bit of cr0 to 1.
-    mov eax, cr0
-    or eax, 0x1
-    mov cr0, eax
-
-    jmp CODE_SEG:init_32bit     ; Far jump to 32 bit code.
-
-; Print string pointed to by si to screen using BIOS interrupts.
-bios_print:
+bios_print:                     ; Print string pointed to by si to screen using
+                                ; BIOS interrupts.
     mov ah, 0x0e
 
-.loop
-    lodsb                       ; Load next byte from string into al.
-    or al, al                   ; Check if al is 0.
-    jz .end                     ; If al is 0, end of string reached.
-    int 0x10                    ; BIOS interrupt to print character in al.
-    jmp .loop
+    .loop
+        lodsb                   ; Load next byte from string into al.
+        or al, al               ; Check if al is 0.
+        jz .end                 ; If al is 0, end of string reached.
+        int 0x10                ; BIOS interrupt to print character in al.
+        jmp .loop
 
-.end:
-    ; Print newline and carriage return.
-    mov al, 0xa
-    int 0x10
-    mov al, 0xd
-    int 0x10
-    ret
+    .end:
+        mov al, 0xa             ; Print newline and carriage return.
+        int 0x10
+        mov al, 0xd
+        int 0x10
+        ret
 
-welcome_msg db "Welcome to the bootloader", 0
+haltloop:
+    hlt
+    jmp haltloop
+
+BOOT_DRIVE db 0x0
+
+cpuid_error_msg db "The CPU does not support CPUID", 0
+cpu_error_msg db "Not a 64 bit CPU", 0
 disk_error_msg db "Disk error", 0
 sector_error_msg db "Sector error", 0
-kernel_loading_msg db "Loading kernel...", 0
-switch_msg db "Switching to 32 bit mode...", 0
+kernel_loading_msg db "Loading kernel", 0
+switch_msg db "Switching to 64 bit mode", 0
 
 %include "gdt.asm"
 
@@ -133,11 +158,93 @@ switch_msg db "Switching to 32 bit mode...", 0
 times 510 - ($ - $$) db 0
 dw 0xaa55
 
-kernel_offset:
-[bits 32]
+KERNEL_OFFSET:                  ; Memory address where kernel is loaded to.
 
-init_32bit:
-    ; Set up segment pointers for 32 bit mode
+prepare_long_mode:              ; The kernel technically starts here, but it's
+                                ; still bootloader code.
+
+    mov si, switch_msg
+    call bios_print
+
+    mov ah, 0x02                ; Move cursor to top left corner of screen.
+    mov bh, 0x00
+    mov dh, 0x00
+    mov dl, 0x00
+    int 0x10
+
+    mov ax, 0x2401              ; Due to some short-sighted programmers, the A20
+    int 0x15                    ; line is disabled by default on boot. Entering
+                                ; long mode without enabling the A20 line will
+                                ; result in only odd MiBs of memory being
+                                ; accessible.
+
+
+                                ; Clear the page tables.
+
+    mov edi, 0x1000             ; Address of the PML4 table.
+    mov cr3, edi                ; Set cr3 to address of PML4 table.
+    xor eax, eax                ; Clear eax.
+    mov ecx, 4096               ; Set ecx to number of page table entries.
+    rep stosd                   ; Store 4096 0x00000000s to page tables.
+    mov edi, cr3
+
+                                ; Set up page table structure.
+
+    mov dword [edi], 0x2003     ; Set the first entry of the PML4 table to
+                                ; point to the PDPT table.
+    add edi, 0x1000             ; Increase edi to point to the PDPT table.
+    mov dword [edi], 0x3003     ; Set the first entry of the PDPT table to
+                                ; point to the PD table.
+    add edi, 0x1000             ; Increase edi to point to the PD table.
+    mov dword [edi], 0x4003     ; Set the first entry of the PD table to point
+                                ; to the PT table.
+    add edi, 0x1000             ; Increase edi to point to the PT table.
+
+                                ; Set up page table entries. This identity maps
+                                ; the first 2 MiB of memory.
+
+    mov ebx, 0x00000003         ; Data to be stored in page table entries:
+                                ; Present bit set, read/write bit set.
+    mov ecx, 512                ; Number of page table entries to set.
+
+    .set_entry:
+        mov dword [edi], ebx    ; Store data in page table entry.
+        add ebx, 0x1000         ; Increase ebx by 4096 to increase the physical
+                                ; address to be mapped.
+        add edi, 8              ; Increase edi to point to the next page table
+                                ; entry.
+        loop .set_entry
+
+                                ; Enable PAE.
+
+    mov eax, cr4                ; Set PAE bit in cr4.
+    or eax, 1 << 5
+    mov cr4, eax
+
+                                ; Set LM bit.
+
+    mov ecx, 0xc0000080         ; Read EFER MSR to EAX.
+    rdmsr
+    or eax, 1 << 8              ; Enable LM bit.
+    wrmsr                       ; Write EAX back to EFER MSR.
+
+                                ; Enable paging.
+
+    mov eax, cr0                ; Set both PG and PE bits in cr0.
+    or eax, 1 << 31 | 1 << 0
+    mov cr0, eax
+
+    cli                         ; Disable interrupts until kernel creates IDT.
+
+    lgdt [gdt_descriptor]       ; Load GDT.
+
+                                ; Set up segment pointers for long mode.
+
+    jmp CODE_SEG:init_long      ; Jump to 64 bit code.
+
+[bits 64]
+
+init_long:
     mov ax, DATA_SEG            ; Move data segment address to ax.
     mov ds, ax                  ; Data segment
     mov ss, ax                  ; Stack segment
@@ -147,43 +254,39 @@ init_32bit:
 
     mov esp, kernel_stack_top   ; Set stack pointer to top of kernel stack.
 
-    call clear_screen
+                                ; Clear screen.
 
-    mov esi, kernel_exec_msg
-    call vga_print
-
-    call execute_kernel
-
-execute_kernel:
-    call clear_screen
-
-    [extern main]
-    call main
-
-    cli
-    hlt
-
-clear_screen:
     mov edi, 0xb8000            ; Set destination to VGA memory.
     mov eax, 0x0f20             ; Set eax to white space character.
     mov ecx, 80 * 25            ; Number of characters to clear.
     rep stosd                   ; Repeat store eax to edi ecx times.
-    ret
+
+    mov esi, kernel_exec_msg
+    call vga_print
+
+    [extern kmain]
+    call kmain
+
+    cli
+
+    .loop                       ; Loop forever in case kernel returns.
+        hlt
+        jmp .loop
 
 vga_print:
     mov edi, 0xb8000            ; Set destination to VGA memory.
     mov ah, 0x0f                ; Set attribute to white on black.
     jmp .loop
 
-.loop:
-    lodsb                       ; Load next byte from string into al.
-    or al, al                   ; Check if al is 0.
-    jz .end                     ; If al is 0, end of string reached.
-    stosw                       ; Store al in VGA memory.
-    jmp .loop
+    .loop:
+        lodsb                   ; Load next byte from string into al.
+        or al, al               ; Check if al is 0.
+        jz .end                 ; If al is 0, end of string reached.
+        stosw                   ; Store al in VGA memory.
+        jmp .loop
 
-.end:
-    ret
+    .end:
+        ret
 
 kernel_exec_msg db "Executing kernel...", 0
 

@@ -19,14 +19,16 @@
 
           nativeBuildInputs = [ pkgs.yasm ];
 
-          buildPhase = ''
-            yasm bootloader/main.asm -f elf32 -o boot.o
-            gcc -m32 kernel/*.c boot.o -o boot.img -nostdlib -fno-pie -ffreestanding -std=c11 -mno-red-zone -fno-exceptions -nostdlib -Wextra -Werror -T linker.ld
-          '';
-
           installPhase = ''
             mkdir -p $out
             cp boot.img $out/
+          '';
+
+          buildPhase = ''
+            yasm bootloader/main.asm -f elf64 -o boot.o
+            gcc -m64 kernel/*.c boot.o -o boot.img -nostdlib -fno-pie \
+            -ffreestanding -std=c11 -mno-red-zone -fno-exceptions \
+            -nostdlib -Wextra -Werror -T linker.ld
           '';
         };
 

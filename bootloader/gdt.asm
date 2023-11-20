@@ -1,104 +1,51 @@
-; Before the CPU can enter protected mode, the memory needs to be segmented.
-; This is done by creating a Global Descriptor Table (GDT) and loading it into
-; the GDTR register. The GDT is a table of segment descriptors, which describe
-; the properties of a segment.
+; Before the CPU can exit real mode, the memory needs to be segmented. This is
+; done by creating a Global Descriptor Table (GDT) and loading it into the GDTR
+; register. The GDT is a table of segment descriptors, which describe the
+; properties of a segment.
+
+; More info: https://wiki.osdev.org/Global_Descriptor_Table
+
+; Access bits
+PRESENT         equ 1 << 7      ; Segment is present in memory.
+NOT_SYS         equ 1 << 4      ; Segment is not a system segment.
+EXEC            equ 1 << 3      ; Segment is executable.
+RW              equ 1 << 1      ; Readable bit:
+                                ; 0 = segment is read-only
+                                ; 1 = segment is read/write
+
+; Flags bits
+GRAN_4K         equ 1 << 7      ; Granularity bit:
+                                ; 0 = limit is in bytes
+                                ; 1 = limit is in 4KiB blocks
+SZ_32           equ 1 << 6      ; Size bit:
+                                ; 0 = 16-bit protected mode
+                                ; 1 = 32-bit protected mode
+LONG_MODE       equ 1 << 5      ; Long mode bit.
 
 ; The GDT needs to start with a null descriptor, an empty segment descriptor.
 gdt_start:
     dq 0x0
 
 ; Code segment
-; This will hold the code that we want to execute in protected mode, i.e. the
-; kernel.
+; This holds the kernel code.
 gdt_code:
-    dw 0xffff                   ; Limit (segment length) 1/2
-
-    dw 0x0                      ; Base address 1/3
-
-    db 0x0                      ; Base address 2/3
-
-    db 10011010b                ; flags 1/2
-                                ; 1 0 0 1 1 0 1 0
-                                ; P DPL S E C R A
-                                ; P = 1 (Present)
-                                ;   Segment is present in memory
-                                ; DPL = 00 (Descriptor Privilege Level)
-                                ;   Sets the privilege level of the segment to
-                                ;   ring 0.
-                                ; S = 1 (Type selector)
-                                ;   Defines this is a code segment.
-                                ; E = 1 (Executable)
-                                ;   Code segment is executable.
-                                ; C = 0 (Conforming)
-                                ;   Code segment is not conforming, i.e. it can
-                                ;   only be executed from the privilege level
-                                ;   specified in the DPL field.
-                                ; R = 1 (Readable)
-                                ;   Code segment is readable.
-                                ; A = 0 (Accessed)
-                                ;   CPU sets this to 1 when the segment is
-                                ;   accessed.
-
-    db 11001111b                ; Flags 2/2
-                                ; 1 1  0 0   1 1 1 1
-                                ; G DB L AVL Limit
-                                ; G = 1 (Granularity)
-                                ;   Scaling of limit field, set to 1 to scale
-                                ;   limit by 4K.
-                                ; DB = 1 (Default operation size)
-                                ;   32-bit protected mode
-                                ; L = 0 (64-bit code segment)
-                                ;   Not in long mode.
-                                ; AVL = 0 (Available for use by system software)
-                                ;   Ignored by CPU, can be used by OS.
-                                ; Limit 2/2
-
-    db 0x0                      ; Base address 3/3
+    dd 0xffff                           ; Limit (low) and base address (low)
+    db 0                                ; Base address (mid)
+    db PRESENT | NOT_SYS | EXEC | RW    ; Access bits
+    db GRAN_4K | LONG_MODE | 0xf        ; Flags bits and limit (high)
+    db 0                                ; Base address (high)
 
 ; Data segment
-; This will hold the stack f
+; This will hold the stack, data and other segments.
 gdt_data:
-    dw 0xffff                   ; Limit (segment length) 1/2
+    dd 0xffff                           ; Limit (low) and base address (low)
+    db 0                                ; Base address (mid)
+    db PRESENT | NOT_SYS | RW           ; Access bits
+    db GRAN_4K | SZ_32 | 0xf            ; Flags bits and limit (high)
+    db 0                                ; Base address (high)
 
-    dw 0x0                      ; Base address 1/3
-
-    db 0x0                      ; Base address 2/3
-
-    db 10010010b                ; Flags 1/2
-                                ; 1 0 0 1 0 0 1 0
-                                ; P DPL S E D W A
-                                ; P = 1 (Present)
-                                ;   Segment is present in memory
-                                ; DPL = 00 (Descriptor Privilege Level)
-                                ;   Sets the privilege level of the segment to
-                                ;   ring 0.
-                                ; S = 1 (Type selector)
-                                ;   Defines this is a data segment.
-                                ; E = 0 (Executable)
-                                ;   Data segment is not executable.
-                                ; D = 1 (Direction)
-                                ;   Data segment grows down (i.e. stack)
-                                ; W = 1 (Writable)
-                                ;   Data segment is writable.
-                                ; A = 0 (Accessed)
-                                ;   CPU sets this to 1 when the segment is
-                                ;   accessed.
-
-    db 11001111b                ; Flags 2/2
-                                ; 1 1  0 0   1 1 1 1
-                                ; G DB L AVL Limit
-                                ; G = 1 (Granularity)
-                                ;   Scaling of limit field, set to 1 to scale
-                                ;   limit by 4K.
-                                ; DB = 1 (Default operation size)
-                                ;   32-bit protected mode
-                                ; L = 0 (64-bit code segment)
-                                ;   Not in long mode.
-                                ; AVL = 0 (Available for use by system software)
-                                ;   Ignored by CPU, can be used by OS.
-                                ; Limit 2/2
-
-    db 0x0                      ; Base address 3/3
+align 8                                 ; Align the GDT to 4 bytes
+    dw 0
 
 gdt_end:
 

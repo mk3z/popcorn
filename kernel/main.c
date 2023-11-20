@@ -1,6 +1,7 @@
 #include "print.h"
 
-void main() {
+void kmain() {
+  clear();
   println("Kernel booted succesfully.");
   long int p;
 }

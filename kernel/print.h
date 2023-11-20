@@ -3,6 +3,7 @@
 
 void print(char *str);
 void println(char *str);
+void clear();
 char *ltoa(long int n);
 char *ltoah(long int n);
 

@@ -67,3 +67,10 @@ void println(char *str) {
   print(str);
   cursor += 80 - cursor % 80;
 }
+
+void clear() {
+  for (int i = 0; i < 80 * 25; i++) {
+    video_memory[i] = 0x0f00 | ' ';
+  }
+  cursor = 0;
+}
